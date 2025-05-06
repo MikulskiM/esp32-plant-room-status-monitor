@@ -33,4 +33,9 @@ Each node sends sensor data over local Wi-Fi to a **central ESP32 hub**, which:
 - Soil moisture sensor
 - OLED 80x160 SPI display
 - Power supply for nodes (power banks in my case)
+
+## 📷 Screenshots, photos, important images
+
+![image](https://github.com/user-attachments/assets/50de6a14-0985-4772-adc3-12b0eb7107a3)
+
   
