@@ -3,6 +3,12 @@
 #include <Adafruit_BMP280.h>
 #include <esp_timer.h>
 
+#define SOIL_MOISTURE_PIN 34
+
+#define DRY 2600  // 100% dryness on my desk
+#define WET 900   // 100% wet? probably will never reach that
+                  // 950-1000 is correctly watered
+
 Adafruit_AHTX0 aht_sensor;
 Adafruit_BMP280 bmp_sensor;
 
@@ -15,8 +21,13 @@ void readSensors(void* arg) {
   aht_sensor.getEvent(&humidity, &temperature);
   float pressure = bmp_sensor.readPressure() / 100.0F;
 
-  Serial.printf("[AHT20+BMP280] Temp: %.2f°C Hum: %.2f%% | Pressure: %.2f hPa\n",
+  int soil_moisture_ADC = analogRead(SOIL_MOISTURE_PIN);
+  int soil_moisture_mapped = map(soil_moisture_ADC, DRY, WET, 0, 100);
+
+  Serial.printf("[AHT20+BMP280] Temp: %.2f°C Hum: %.2f%% | Pressure: %.2f hPa | ",
     temperature.temperature, humidity.relative_humidity, pressure);
+  Serial.printf("Mapped soil moisture data: %d\% | ", soil_moisture_mapped);
+  Serial.printf("Raw soil moisture data: %d\n", soil_moisture_ADC);
 }
 
 void setup() {
