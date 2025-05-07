@@ -14,7 +14,8 @@
 #define WET 900   // 100% wet? probably will never reach that
                   // 950-1000 is correctly watered
 
-#define MASTER_MAC {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF} // main node mac
+#define MASTER_MAC {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF} // broadcast
+// #define MASTER_MAC {0x5C, 0x01, 0x3B, 0x72, 0x6E, 0x34} // main node mac: 5C:01:3B:72:6E:34
 
 typedef struct {
   float humidity;
@@ -108,6 +109,10 @@ void setup() {
   delay(1000);
 
   initEspNow();
+
+  // check MAC address
+  Serial.print("Sensor node MAC Address: ");
+  Serial.println(WiFi.macAddress());
 
   Serial.println("Starting...");
 
