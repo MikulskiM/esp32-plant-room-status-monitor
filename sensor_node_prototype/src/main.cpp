@@ -5,17 +5,22 @@
 #include <esp_now.h>
 #include <WiFi.h>
 
-#define SOIL_MOISTURE_PIN 34
+#include "esp_wifi.h"
 
-#define SECONDS_DELAY 2 // seconds between sensor measurements
-#define MINUTES_DELAY 1 // minutes between esp-now sends data to the main node
+#define SERIAL_BAUD_RATE  115200
+#define WIFI_CHANNEL      6
+#define BROADCAST_MAC     {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+#define HUB_MAC           {0x5C, 0x01, 0x3B, 0x72, 0x6E, 0x34}
 
-#define DRY 2600  // 100% dryness on my desk
-#define WET 900   // 100% wet? probably will never reach that
-                  // 950-1000 is correctly watered
+#define SOIL_MOISTURE_PIN     34
+#define SOIL_MOISTURE_DRY_ADC 2600  // 100% dryness on my desk
+#define SOIL_MOISTURE_WET_ADC 900   // 100% wet? probably will never reach that
+                                    // 950-1000 is correctly watered
 
-#define MASTER_MAC {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF} // broadcast
-// #define MASTER_MAC {0x5C, 0x01, 0x3B, 0x72, 0x6E, 0x34} // main node mac: 5C:01:3B:72:6E:34
+#define SENSOR_READ_INTERVAL_S    2 // seconds between sensor measurements
+#define ESP_NOW_SEND_INTERVAL_MIN 1 // minutes between esp-now sends data to the hub node
+
+#define BMP280_I2C_ADDR   0x77
 
 typedef struct {
   float humidity;
@@ -38,7 +43,7 @@ void readSensors(void* arg) {
   float pressure = bmp_sensor.readPressure() / 100.0F;
 
   int soil_moisture_ADC = analogRead(SOIL_MOISTURE_PIN);
-  int soil_moisture_mapped = map(soil_moisture_ADC, DRY, WET, 0, 100);
+  int soil_moisture_mapped = map(soil_moisture_ADC, SOIL_MOISTURE_DRY_ADC, SOIL_MOISTURE_WET_ADC, 0, 100);
 
   Serial.printf("[AHT20+BMP280] Temp: %.2f°C Hum: %.2f%% | Pressure: %.2f hPa | ",
     temperature.temperature, humidity.relative_humidity, pressure);
@@ -63,29 +68,35 @@ void onDataSent(const uint8_t *mac, esp_now_send_status_t status) {
 
 void initEspNow() {
   WiFi.mode(WIFI_STA);
+  esp_wifi_set_promiscuous(true);
+  esp_wifi_set_channel(WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  esp_wifi_set_promiscuous(false);
 
   if (esp_now_init() != ESP_OK) {
     Serial.println("ESP-NOW esp_now_init() FAIL");
     return;
   }
 
-  esp_now_peer_info_t peerInfo = {
-    .peer_addr = MASTER_MAC,
+  esp_now_peer_info_t hub_peer = {
+    .peer_addr = HUB_MAC,
     .channel = 0,
     .encrypt = false
   };
 
-  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-    Serial.println("ESP-NOW esp_now_add_peer() FAIL");
-    return;
+  if (!esp_now_is_peer_exist(hub_peer.peer_addr)) {
+    if (esp_now_add_peer(&hub_peer) != ESP_OK) {
+      Serial.println("ESP-NOW esp_now_add_peer() FAIL");
+      return;
+    }
   }
 
   esp_now_register_send_cb(onDataSent);
+  Serial.println("ESP-NOW transmitter ready");
 }
 
 void sendSensorData(void* arg) {
   SensorData* data = (SensorData*)arg;
-  uint8_t MASTER[] = MASTER_MAC;
+  uint8_t hub_mac[] = HUB_MAC;
 
   Serial.println("ESP-NOW Sending sensor data:");
   Serial.printf("\tTemp:\t%.2f°C\n", data->temperature);
@@ -93,7 +104,7 @@ void sendSensorData(void* arg) {
   Serial.printf("\tPress:\t%.2f hPa\n", data->pressure);
   Serial.printf("\tSoil:\t%d%%\n", data->soil_moisture_mapped);
 
-  esp_err_t result = esp_now_send(MASTER, (uint8_t*)data, sizeof(SensorData));
+  esp_err_t result = esp_now_send(hub_mac, (uint8_t*)data, sizeof(SensorData));
 
   if (result == ESP_OK) {
     Serial.println("\tesp_now_send() queued successfully.");
@@ -105,16 +116,16 @@ void sendSensorData(void* arg) {
 void setup() {
   SensorData* sensor_data = new SensorData();
 
-  Serial.begin(115200);
+  Serial.begin(SERIAL_BAUD_RATE);
   delay(1000);
-
-  initEspNow();
 
   // check MAC address
   Serial.print("Sensor node MAC Address: ");
   Serial.println(WiFi.macAddress());
 
-  Serial.println("Starting...");
+  initEspNow();
+
+  Serial.println("Starting sensor node...");
 
   if(!aht_sensor.begin()) {
     Serial.println("ERROR: couldn't start the AHT20 sensor");
@@ -132,7 +143,7 @@ void setup() {
   };
 
   esp_timer_create(&sensor_timer_args, &sensor_timer);
-  esp_timer_start_periodic(sensor_timer, SECONDS_DELAY * 1000 * 1000);
+  esp_timer_start_periodic(sensor_timer, SENSOR_READ_INTERVAL_S * 1000 * 1000);
   Serial.println("Sensor timer started...");
 
   esp_timer_create_args_t esp_now_timer_args = {
@@ -143,7 +154,7 @@ void setup() {
   };
 
   esp_timer_create(&esp_now_timer_args, &esp_now_timer);
-  esp_timer_start_periodic(esp_now_timer, 60 * MINUTES_DELAY * 1000 * 1000);
+  esp_timer_start_periodic(esp_now_timer, 60 * ESP_NOW_SEND_INTERVAL_MIN * 1000 * 1000);
   Serial.println("ESP-NOW timer started...");
 }
 
