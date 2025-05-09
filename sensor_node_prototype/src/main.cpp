@@ -8,7 +8,7 @@
 #include "esp_wifi.h"
 
 #define SERIAL_BAUD_RATE  115200
-#define WIFI_CHANNEL      6
+#define WIFI_CHANNEL      11
 #define BROADCAST_MAC     {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 #define HUB_MAC           {0x5C, 0x01, 0x3B, 0x72, 0x6E, 0x34}
 
@@ -21,6 +21,9 @@
 #define ESP_NOW_SEND_INTERVAL_MIN 1 // minutes between esp-now sends data to the hub node
 
 #define BMP280_I2C_ADDR   0x77
+
+#define MAX_SEND_RETRIES 5
+#define RETRY_DELAY_MS   100
 
 typedef struct {
   float humidity;
@@ -35,6 +38,8 @@ Adafruit_BMP280 bmp_sensor;
 esp_timer_handle_t sensor_timer;
 esp_timer_handle_t esp_now_timer;
 
+volatile bool lastSendSuccess = false;
+
 void readSensors(void* arg) {
   sensors_event_t humidity;
   sensors_event_t temperature;
@@ -47,7 +52,7 @@ void readSensors(void* arg) {
 
   Serial.printf("[AHT20+BMP280] Temp: %.2f°C Hum: %.2f%% | Pressure: %.2f hPa | ",
     temperature.temperature, humidity.relative_humidity, pressure);
-  Serial.printf("Mapped soil moisture data: %d\%\n", soil_moisture_mapped);
+  Serial.printf("Soil moisture: %d%%\n", soil_moisture_mapped);
 
   SensorData* data = (SensorData*)arg;
   data->humidity = humidity.relative_humidity;
@@ -60,9 +65,11 @@ void onDataSent(const uint8_t *mac, esp_now_send_status_t status) {
   Serial.print("ESP-NOW send status: ");
     if (status == ESP_NOW_SEND_SUCCESS) {
       Serial.print("SUCCESS\n");
+      lastSendSuccess = true;
     }
     else {
       Serial.print("FAIL\n");
+      lastSendSuccess = false;
     }
 }
 
@@ -71,6 +78,10 @@ void initEspNow() {
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_channel(WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
   esp_wifi_set_promiscuous(false);
+
+  uint8_t ch; wifi_second_chan_t sc;
+  esp_wifi_get_channel(&ch, &sc);
+  Serial.printf("Sensor node running on channel: %d\n", ch);
 
   if (esp_now_init() != ESP_OK) {
     Serial.println("ESP-NOW esp_now_init() FAIL");
@@ -86,7 +97,10 @@ void initEspNow() {
   if (!esp_now_is_peer_exist(hub_peer.peer_addr)) {
     if (esp_now_add_peer(&hub_peer) != ESP_OK) {
       Serial.println("ESP-NOW esp_now_add_peer() FAIL");
-      return;
+    } else {
+      Serial.printf("Added peer MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+        hub_peer.peer_addr[0], hub_peer.peer_addr[1], hub_peer.peer_addr[2],
+        hub_peer.peer_addr[3], hub_peer.peer_addr[4], hub_peer.peer_addr[5]);
     }
   }
 
@@ -104,14 +118,31 @@ void sendSensorData(void* arg) {
   Serial.printf("\tPress:\t%.2f hPa\n", data->pressure);
   Serial.printf("\tSoil:\t%d%%\n", data->soil_moisture_mapped);
 
-  esp_err_t result = esp_now_send(hub_mac, (uint8_t*)data, sizeof(SensorData));
+  for (int attempt = 1; attempt <= MAX_SEND_RETRIES; ++attempt) {
+    Serial.printf("ESP-NOW Sending sensor data (attempt %d)...\n", attempt);
+    lastSendSuccess = false;  // reset before sending
 
-  if (result == ESP_OK) {
-    Serial.println("\tesp_now_send() queued successfully.");
-  } else {
-    Serial.printf("\tesp_now_send() FAILED! Error code: %d\n", result);
+    esp_err_t result = esp_now_send(hub_mac, (uint8_t*)data, sizeof(SensorData));
+    if (result == ESP_OK) {
+      Serial.println("\tesp_now_send() queued.");
+    } else {
+      Serial.printf("\tesp_now_send() QUEUE FAIL! Error: %d\n", result);
+      delay(RETRY_DELAY_MS);
+      continue;  // try again
+    }
+
+    delay(50);  // wait for status callback
+
+    if (lastSendSuccess) {
+      Serial.println("Send confirmed by callback.");
+      break;
+    } else {
+      Serial.println("Send failed, retrying...");
+      delay(RETRY_DELAY_MS);
+    }
   }
 }
+
 
 void setup() {
   SensorData* sensor_data = new SensorData();
