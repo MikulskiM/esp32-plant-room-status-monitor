@@ -4,6 +4,8 @@
 #include <WebServer.h>
 #include <esp_timer.h>
 #include <ESPmDNS.h>
+#include <time.h>
+#include <lwip/sockets.h>
 
 #include "esp_wifi.h"
 #include "secrets.h"  // put your wifi name nad password
@@ -25,6 +27,29 @@ bool has_sensor_data = false;
 
 WebServer server(80);  // HTTP server on port 80
 
+void initTime() {
+  configTime(3600, 0, "pool.ntp.org", "time.nist.gov"); // 3600 = GMT+1
+  Serial.print("Getting real time");
+  while (time(nullptr) < 100000) {  // wait for valid time
+    Serial.print(".");
+    delay(500);
+  }
+  Serial.println("\nTime ready");
+}
+
+String getCurrentTimestamp() {
+  // [09.05.2025 - 10:58]
+  char timestamp[21];
+
+  time_t now = time(nullptr);
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+
+  strftime(timestamp, sizeof(timestamp), "%d.%m.%Y - %H:%M", &timeinfo);
+
+  return String(timestamp);
+}
+
 void onDataReceive(const uint8_t* mac, const uint8_t* incoming_data, int len) {
   if (len == sizeof(SensorData)) {
     SensorData* data = (SensorData*)incoming_data;
@@ -32,8 +57,10 @@ void onDataReceive(const uint8_t* mac, const uint8_t* incoming_data, int len) {
     latest_sensor_data = *data;
     has_sensor_data = true;
 
-    Serial.printf("ESP-NOW Data received from %02X:%02X:%02X:%02X:%02X:%02X:\n",
-      mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    String timestamp = getCurrentTimestamp();
+
+    Serial.printf("[%s] ESP-NOW Data received from %02X:%02X:%02X:%02X:%02X:%02X:\n",
+      timestamp.c_str(), mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     Serial.printf("\tTemp:\t%.2f°C\n", data->temperature);
     Serial.printf("\tHum:\t%.2f%%\n", data->humidity);
     Serial.printf("\tPress:\t%.2f hPa\n", data->pressure);
@@ -60,6 +87,7 @@ void handleRoot() {
   html += "<li><b>Humidity:</b> " + String(latest_sensor_data.humidity, 2) + " %</li>";
   html += "<li><b>Pressure:</b> " + String(latest_sensor_data.pressure, 2) + " hPa</li>";
   html += "<li><b>Soil Moisture:</b> " + String(latest_sensor_data.soil_moisture_mapped) + " %</li>";
+  html += "<li><b>Received:</b> " + getCurrentTimestamp() + "</li>";
   html += "</ul></body></html>";
 
   server.send(200, "text/html", html);
@@ -115,6 +143,8 @@ void setup() {
   Serial.println("\nWiFi connected!");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
+
+  initTime();
 
   uint8_t primaryChan;
   wifi_second_chan_t secondChan;
