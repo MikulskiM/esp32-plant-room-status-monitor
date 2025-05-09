@@ -23,7 +23,7 @@
 #define BMP280_I2C_ADDR   0x77
 
 #define MAX_SEND_RETRIES 5
-#define RETRY_DELAY_MS   100
+#define RETRY_DELAY_MS   250
 
 typedef struct {
   float humidity;
@@ -32,11 +32,18 @@ typedef struct {
   int soil_moisture_mapped;
 } SensorData;
 
+typedef struct {
+  SensorData* data;
+  uint8_t peer_addr[6];
+  int attempt;
+} ResendContext;
+
 Adafruit_AHTX0 aht_sensor;
 Adafruit_BMP280 bmp_sensor;
 
 esp_timer_handle_t sensor_timer;
 esp_timer_handle_t esp_now_timer;
+esp_timer_handle_t resend_timer;
 
 volatile bool lastSendSuccess = false;
 
@@ -108,44 +115,60 @@ void initEspNow() {
   Serial.println("ESP-NOW transmitter ready");
 }
 
-void sendSensorData(void* arg) {
-  SensorData* data = (SensorData*)arg;
-  uint8_t hub_mac[] = HUB_MAC;
+void retrySend(void* arg) {
+  ResendContext* ctx = (ResendContext*)arg;
 
-  Serial.println("ESP-NOW Sending sensor data:");
-  Serial.printf("\tTemp:\t%.2f°C\n", data->temperature);
-  Serial.printf("\tHum:\t%.2f%%\n", data->humidity);
-  Serial.printf("\tPress:\t%.2f hPa\n", data->pressure);
-  Serial.printf("\tSoil:\t%d%%\n", data->soil_moisture_mapped);
+  // Jeśli poprzednia próba się udała — zakończ retransmisję
+  if (lastSendSuccess) {
+    Serial.println("[Resend] Last send was successful. No further retries needed.");
+    return;
+  }
 
-  for (int attempt = 1; attempt <= MAX_SEND_RETRIES; ++attempt) {
-    Serial.printf("ESP-NOW Sending sensor data (attempt %d)...\n", attempt);
-    lastSendSuccess = false;  // reset before sending
+  if (ctx->attempt >= MAX_SEND_RETRIES) {
+    Serial.println("[Resend] Max retries reached. Giving up.");
+    return;
+  }
 
-    esp_err_t result = esp_now_send(hub_mac, (uint8_t*)data, sizeof(SensorData));
-    if (result == ESP_OK) {
-      Serial.println("\tesp_now_send() queued.");
-    } else {
-      Serial.printf("\tesp_now_send() QUEUE FAIL! Error: %d\n", result);
-      delay(RETRY_DELAY_MS);
-      continue;  // try again
-    }
+  ctx->attempt++;
+  Serial.printf("ESP-NOW Sending sensor data (retry %d)...\n", ctx->attempt);
+  lastSendSuccess = false;
 
-    delay(50);  // wait for status callback
+  esp_err_t result = esp_now_send(ctx->peer_addr, (uint8_t*)ctx->data, sizeof(SensorData));
+  if (result == ESP_OK) {
+    Serial.println("\tesp_now_send() queued.");
+  } else {
+    Serial.printf("\tesp_now_send() QUEUE FAIL! Error: %d\n", result);
+  }
 
-    if (lastSendSuccess) {
-      Serial.println("Send confirmed by callback.");
-      break;
-    } else {
-      Serial.println("Send failed, retrying...");
-      delay(RETRY_DELAY_MS);
-    }
+  // Retry again if needed
+  if (!lastSendSuccess && ctx->attempt < MAX_SEND_RETRIES) {
+    esp_timer_start_once(resend_timer, RETRY_DELAY_MS * 1000);
   }
 }
 
+void sendSensorData(void* arg) {
+  ResendContext* ctx = (ResendContext*)arg;
+
+  // reset status for a new data
+  lastSendSuccess = false;
+  ctx->attempt = 0;
+
+  Serial.println("ESP-NOW Sending sensor data:");
+  Serial.printf("\tTemp:\t%.2f°C\n", ctx->data->temperature);
+  Serial.printf("\tHum:\t%.2f%%\n", ctx->data->humidity);
+  Serial.printf("\tPress:\t%.2f hPa\n", ctx->data->pressure);
+  Serial.printf("\tSoil:\t%d%%\n", ctx->data->soil_moisture_mapped);
+
+  retrySend(ctx);  // initial attempt
+}
 
 void setup() {
   SensorData* sensor_data = new SensorData();
+  ResendContext* resend_ctx = new ResendContext();
+
+  uint8_t hub_mac[] = HUB_MAC;
+  memcpy(resend_ctx->peer_addr, hub_mac, 6);
+  resend_ctx->data = sensor_data;
 
   Serial.begin(SERIAL_BAUD_RATE);
   delay(1000);
@@ -179,7 +202,7 @@ void setup() {
 
   esp_timer_create_args_t esp_now_timer_args = {
     .callback = &sendSensorData,
-    .arg = sensor_data,
+    .arg = resend_ctx,
     .dispatch_method = ESP_TIMER_TASK,
     .name = "esp_now_timer"
   };
@@ -187,6 +210,16 @@ void setup() {
   esp_timer_create(&esp_now_timer_args, &esp_now_timer);
   esp_timer_start_periodic(esp_now_timer, 60 * ESP_NOW_SEND_INTERVAL_MIN * 1000 * 1000);
   Serial.println("ESP-NOW timer started...");
+
+  esp_timer_create_args_t resend_timer_args = {
+    .callback = &retrySend,
+    .arg = resend_ctx,
+    .dispatch_method = ESP_TIMER_TASK,
+    .name = "resend_timer"
+  };
+
+  esp_timer_create(&resend_timer_args, &resend_timer);
+  Serial.println("Resend timer created...");
 }
 
 void loop() {
