@@ -38,4 +38,19 @@ Each node sends sensor data over local Wi-Fi to a **central ESP32 hub**, which:
 
 ![image](https://github.com/user-attachments/assets/50de6a14-0985-4772-adc3-12b0eb7107a3)
 
-  
+## ⚠️ PROBLEM FOUND: ESP-NOW + Wi-Fi Server (ESP32)
+
+ESP-NOW and Wi-Fi both use the same radio, but they must operate on the **same channel** to coexist. When the ESP32 connects to a router, it joins a **dynamically selected channel**, which can break ESP-NOW communication.
+
+### 🔧 What I did:
+- The **hub node connects to Wi-Fi first**, then reads the current Wi-Fi channel and starts ESP-NOW on that channel.
+- The **sensor node is hardcoded to use that same channel** (e.g. channel 11).
+
+### 💡 Potential solutions:
+
+1. **Set a fixed Wi-Fi channel** on your router  
+   This would guarantee consistent ESP-NOW behavior, but it may **negatively impact your home network**, so I avoided this approach.
+
+2. **Split the ESP-NOW receiver and the HTTP server into two devices**  
+   The hub node would focus solely on receiving ESP-NOW data. Then, via **UART or wired serial**, it would forward the data to a second ESP32 (or other device) responsible for hosting the HTTP server.  
+   This would eliminate the channel conflict entirely, but I decided not to use more than 1 ESP32 for that purpose.
