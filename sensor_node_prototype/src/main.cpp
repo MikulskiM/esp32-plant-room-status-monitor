@@ -118,7 +118,6 @@ void initEspNow() {
 void retrySend(void* arg) {
   ResendContext* ctx = (ResendContext*)arg;
 
-  // Jeśli poprzednia próba się udała — zakończ retransmisję
   if (lastSendSuccess) {
     Serial.println("[Resend] Last send was successful. No further retries needed.");
     return;

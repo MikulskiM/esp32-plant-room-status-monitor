@@ -28,7 +28,9 @@ bool has_sensor_data = false;
 WebServer server(80);  // HTTP server on port 80
 
 void initTime() {
-  configTime(3600, 0, "pool.ntp.org", "time.nist.gov"); // 3600 = GMT+1
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  setenv("TZ", "CET-1CEST,M3.5.0/02:00:00,M10.5.0/03:00:00", 1);
+  tzset();
   Serial.print("Getting real time");
   while (time(nullptr) < 100000) {  // wait for valid time
     Serial.print(".");
