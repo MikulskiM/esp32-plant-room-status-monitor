@@ -4,12 +4,23 @@ void initTime() {
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   setenv("TZ", "CET-1CEST,M3.5.0/02:00:00,M10.5.0/03:00:00", 1);
   tzset();
+
   Serial.print("Getting real time");
-  while (time(nullptr) < 100000) {  // wait for valid time
+
+  int attempts = 0;
+  const int maxAttempts = 20;
+
+  while (time(nullptr) < 100000 && attempts < maxAttempts) {
     Serial.print(".");
     delay(500);
+    attempts++;
   }
-  Serial.println("\nTime ready");
+
+  if (time(nullptr) < 100000) {
+    Serial.println("\nFailed to sync time via NTP.");
+  } else {
+    Serial.println("\nTime synced successfully.");
+  }
 }
 
 String formatTimeStamp(time_t timestamp) {
@@ -27,4 +38,14 @@ String formatTimeStamp(time_t timestamp) {
 String getCurrentTimestamp() {
   time_t now = time(nullptr);
   return formatTimeStamp(now);
+}
+
+void printSensorData(SensorData& data) {
+    Serial.print("[");
+    Serial.print(formatTimeStamp(data.timestamp));
+    Serial.println("]");
+    Serial.printf("  temp: %.2f °C\n", data.temperature);
+    Serial.printf("  hum : %.2f %%\n", data.humidity);
+    Serial.printf("  pres: %.2f hPa\n", data.pressure);
+    Serial.printf("  soil: %d %%\n", data.soil_moisture_mapped);
 }

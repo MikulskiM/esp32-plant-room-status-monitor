@@ -14,9 +14,9 @@ void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
   delay(1000);
 
-  initTime();
-
   setupWebServer(); // WiFi + HTTP server
+
+  initTime();
 
   uint8_t primaryChan;
   wifi_second_chan_t secondChan;

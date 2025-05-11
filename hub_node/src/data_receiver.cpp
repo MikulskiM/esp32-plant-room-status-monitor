@@ -2,6 +2,7 @@
 
 SensorData latest_sensor_data;
 bool has_sensor_data = false;
+RingBuffer ring_buffer;
 
 void initEspNow(uint8_t channel) {
   esp_wifi_set_promiscuous(true);
@@ -35,20 +36,16 @@ void initEspNow(uint8_t channel) {
 }
 
 void onDataReceive(const uint8_t* mac, const uint8_t* incoming_data, int len) {
-  if (len == sizeof(SensorData)) {
-    SensorData* data = (SensorData*)incoming_data;
+  if (len == sizeof(RawSensorData)) {
+    SensorData data = *(SensorData*)incoming_data;
 
-    latest_sensor_data = *data;
-    has_sensor_data = true;
+    data.timestamp = time(nullptr);
+    Serial.printf("Raw timestamp: %ld\n", data.timestamp);
 
-    String timestamp = getCurrentTimestamp();
+    Serial.printf("ESP-NOW Data received from %02X:%02X:%02X:%02X:%02X:%02X:\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    printSensorData(data);
 
-    Serial.printf("[%s] ESP-NOW Data received from %02X:%02X:%02X:%02X:%02X:%02X:\n",
-      timestamp.c_str(), mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    Serial.printf("\tTemp:\t%.2f°C\n", data->temperature);
-    Serial.printf("\tHum:\t%.2f%%\n", data->humidity);
-    Serial.printf("\tPress:\t%.2f hPa\n", data->pressure);
-    Serial.printf("\tSoil:\t%d%%\n", data->soil_moisture_mapped);
+    ring_buffer.addData(data);
   } else {
     Serial.printf("Received data with weird size: %d bytes\n", len);
   }

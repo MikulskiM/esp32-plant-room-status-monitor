@@ -6,6 +6,7 @@
 #include "data_receiver.h"
 #include "utils.h"
 #include "secrets.h"
+#include "ring_buffer.h"
 
 extern WebServer server;  // HTTP server on port 80
 

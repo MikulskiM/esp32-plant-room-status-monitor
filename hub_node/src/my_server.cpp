@@ -25,24 +25,27 @@ void setupWebServer() {
 }
 
 void handleRoot() {
-  if (!has_sensor_data) {
-    server.send(200, "text/plain", "No sensor data received");
-    Serial.println("has_sensor_data: false");
-    return;
+  SensorData dataList[BUFFER_SIZE];
+  int count = ring_buffer.getAll(dataList);
+
+  String html = "<html><head><meta charset='UTF-8'><title>Plant Status</title></head><body>";
+  html += "<h1>Recent Sensor Data (" + String(count) + " entries)</h1>";
+
+  if (count == 0) {
+    html += "<p><i>No sensor data available yet.</i></p>";
+  } else {
+    html += "<ul>";
+    for (int i = 0; i < count; i++) {
+      html += "<li><b>[" + formatTimeStamp(dataList[i].timestamp) + "]</b> ";
+      html += "Temp: " + String(dataList[i].temperature, 2) + " °C, ";
+      html += "Hum: " + String(dataList[i].humidity, 2) + " %, ";
+      html += "Pres: " + String(dataList[i].pressure, 2) + " hPa, ";
+      html += "Soil: " + String(dataList[i].soil_moisture_mapped) + " %</li>";
+    }
+    html += "</ul>";
   }
 
-  Serial.println("has_sensor_data: true");
-
-  String html = "<html><head><title>Plant Status</title></head><body>";
-  html += "<meta charset='UTF-8'>";
-  html += "<h1>Latest Sensor Data</h1>";
-  html += "<ul>";
-  html += "<li><b>Temperature:</b> " + String(latest_sensor_data.temperature, 2) + " °C</li>";
-  html += "<li><b>Humidity:</b> " + String(latest_sensor_data.humidity, 2) + " %</li>";
-  html += "<li><b>Pressure:</b> " + String(latest_sensor_data.pressure, 2) + " hPa</li>";
-  html += "<li><b>Soil Moisture:</b> " + String(latest_sensor_data.soil_moisture_mapped) + " %</li>";
-  html += "<li><b>Received:</b> " + getCurrentTimestamp() + "</li>";
-  html += "</ul></body></html>";
+  html += "</body></html>";
 
   server.send(200, "text/html", html);
   Serial.println("Sent HTML response to client");

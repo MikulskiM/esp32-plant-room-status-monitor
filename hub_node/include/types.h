@@ -11,4 +11,11 @@ typedef struct {
   time_t timestamp;
 } SensorData;
 
+typedef struct {
+  float humidity;
+  float temperature;
+  float pressure;
+  int soil_moisture_mapped;
+} RawSensorData;
+
 #endif
