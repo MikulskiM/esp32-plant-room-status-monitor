@@ -9,48 +9,18 @@
 
 #include "esp_wifi.h"
 #include "secrets.h"  // put your wifi name nad password
+#include "types.h"
+#include "utils.h"
 
 #define SERIAL_BAUD_RATE  115200
 
 // MAC address of sensor_node (5C:01:3B:73:7C:80)
 #define SENSOR_MAC    {0x5C, 0x01, 0x3B, 0x73, 0x7C, 0x80}
 
-typedef struct {
-  float humidity;
-  float temperature;
-  float pressure;
-  int soil_moisture_mapped;
-} SensorData;
-
 SensorData latest_sensor_data;
 bool has_sensor_data = false;
 
 WebServer server(80);  // HTTP server on port 80
-
-void initTime() {
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-  setenv("TZ", "CET-1CEST,M3.5.0/02:00:00,M10.5.0/03:00:00", 1);
-  tzset();
-  Serial.print("Getting real time");
-  while (time(nullptr) < 100000) {  // wait for valid time
-    Serial.print(".");
-    delay(500);
-  }
-  Serial.println("\nTime ready");
-}
-
-String getCurrentTimestamp() {
-  // [09.05.2025 - 10:58]
-  char timestamp[21];
-
-  time_t now = time(nullptr);
-  struct tm timeinfo;
-  localtime_r(&now, &timeinfo);
-
-  strftime(timestamp, sizeof(timestamp), "%d.%m.%Y - %H:%M", &timeinfo);
-
-  return String(timestamp);
-}
 
 void onDataReceive(const uint8_t* mac, const uint8_t* incoming_data, int len) {
   if (len == sizeof(SensorData)) {
