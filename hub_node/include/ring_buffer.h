@@ -11,6 +11,7 @@ public:
     RingBuffer();
 
     void addData(SensorData& newData);
+    void addTestData();
     bool isFull();
     int getSize();
     int getAll(SensorData* outArray);

@@ -28,24 +28,65 @@ void handleRoot() {
   SensorData dataList[BUFFER_SIZE];
   int count = ring_buffer.getAll(dataList);
 
-  String html = "<html><head><meta charset='UTF-8'><title>Plant Status</title></head><body>";
-  html += "<h1>Recent Sensor Data (" + String(count) + " entries)</h1>";
+  String labels = "[";
+  String tempData = "[";
+  String humData = "[";
+  String pressData = "[";
+  String soilData = "[";
 
-  if (count == 0) {
-    html += "<p><i>No sensor data available yet.</i></p>";
-  } else {
-    html += "<ul>";
-    for (int i = 0; i < count; i++) {
-      html += "<li><b>[" + formatTimeStamp(dataList[i].timestamp) + "]</b> ";
-      html += "Temp: " + String(dataList[i].temperature, 2) + " °C, ";
-      html += "Hum: " + String(dataList[i].humidity, 2) + " %, ";
-      html += "Pres: " + String(dataList[i].pressure, 2) + " hPa, ";
-      html += "Soil: " + String(dataList[i].soil_moisture_mapped) + " %</li>";
-    }
-    html += "</ul>";
+  for (int i = 0; i < count; i++) {
+    String label = "\"" + formatTimeStamp(dataList[i].timestamp) + "\"";
+    labels += label + (i < count - 1 ? "," : "");
+    tempData += String(dataList[i].temperature, 2) + (i < count - 1 ? "," : "");
+    humData += String(dataList[i].humidity, 2) + (i < count - 1 ? "," : "");
+    pressData += String(dataList[i].pressure, 2) + (i < count - 1 ? "," : "");
+    soilData += String(dataList[i].soil_moisture_mapped) + (i < count - 1 ? "," : "");
   }
 
-  html += "</body></html>";
+  labels += "]";
+  tempData += "]";
+  humData += "]";
+  pressData += "]";
+  soilData += "]";
+
+  String html = "<html><head><meta charset='UTF-8'><title>Plant Status</title>";
+  html += "<script src='https://cdn.jsdelivr.net/npm/chart.js'></script></head><body>";
+  html += "<h1>Sensor Data Charts</h1>";
+
+  html += "<canvas id='tempChart'></canvas>";
+  html += "<canvas id='humChart'></canvas>";
+  html += "<canvas id='pressChart'></canvas>";
+  html += "<canvas id='soilChart'></canvas>";
+
+  html += "<script>";
+  html += "const labels = " + labels + ";";
+  html += "const tempData = {label: 'Temperature (°C)', data: " + tempData + ", borderColor: 'red', fill: false};";
+  html += "const humData = {label: 'Humidity (%)', data: " + humData + ", borderColor: 'blue', fill: false};";
+  html += "const pressData = {label: 'Pressure (hPa)', data: " + pressData + ", borderColor: 'orange', fill: false};";
+  html += "const soilData = {label: 'Soil Moisture (%)', data: " + soilData + ", borderColor: 'green', fill: false};";
+
+  html += R"rawliteral(
+  function createChart(ctxId, data) {
+    new Chart(document.getElementById(ctxId), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [data]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { display: true, title: { display: true, text: 'Time' }},
+          y: { display: true, beginAtZero: true }
+        }
+      }
+    });
+  }
+  createChart('tempChart', tempData);
+  createChart('humChart', humData);
+  createChart('soilChart', soilData);
+  createChart('soilChart', soilData);
+  </script></body></html>)rawliteral";
 
   server.send(200, "text/html", html);
   Serial.println("Sent HTML response to client");
