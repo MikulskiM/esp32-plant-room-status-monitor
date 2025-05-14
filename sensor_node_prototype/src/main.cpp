@@ -6,6 +6,7 @@
 #include <WiFi.h>
 
 #include "esp_wifi.h"
+#include "types.h"
 
 #define SERIAL_BAUD_RATE  115200
 #define WIFI_CHANNEL      11
@@ -25,18 +26,7 @@
 #define MAX_SEND_RETRIES 5
 #define RETRY_DELAY_MS   250
 
-typedef struct {
-  float humidity;
-  float temperature;
-  float pressure;
-  int soil_moisture_mapped;
-} SensorData;
-
-typedef struct {
-  SensorData* data;
-  uint8_t peer_addr[6];
-  int attempt;
-} ResendContext;
+#define SOIL_MOISTURE_NOT_PRESENT -999
 
 Adafruit_AHTX0 aht_sensor;
 Adafruit_BMP280 bmp_sensor;
@@ -54,18 +44,28 @@ void readSensors(void* arg) {
   aht_sensor.getEvent(&humidity, &temperature);
   float pressure = bmp_sensor.readPressure() / 100.0F;
 
-  int soil_moisture_ADC = analogRead(SOIL_MOISTURE_PIN);
-  int soil_moisture_mapped = map(soil_moisture_ADC, SOIL_MOISTURE_DRY_ADC, SOIL_MOISTURE_WET_ADC, 0, 100);
+  RawSensorData* data = (RawSensorData*)arg;
 
-  Serial.printf("[AHT20+BMP280] Temp: %.2f°C Hum: %.2f%% | Pressure: %.2f hPa | ",
+  // iterate though pins 36, 39, 34, 35, 32 and check for a soil sensor data
+  int pins_arr[] = {36, 39, 34, 35, 32};
+  for (int i = 0; i < MAX_SOIL_SENSORS; i++) {
+    int soil_moisture_ADC = analogRead(pins_arr[i]);
+    if (soil_moisture_ADC < 100) {
+      data->soil_moisture_mapped[i] = SOIL_MOISTURE_NOT_PRESENT;
+    } else {
+      data->soil_moisture_mapped[i] = map(soil_moisture_ADC, SOIL_MOISTURE_DRY_ADC, SOIL_MOISTURE_WET_ADC, 0, 100);
+    }
+  }
+
+  Serial.printf("[AHT20+BMP280] Temp: %.2f°C | Hum: %.2f%% | Pressure: %.2f hPa | ",
     temperature.temperature, humidity.relative_humidity, pressure);
-  Serial.printf("Soil moisture: %d%%\n", soil_moisture_mapped);
+  for (int i = 0; i < MAX_SOIL_SENSORS; i++) {
+    Serial.printf("Soil moisture[%d]: %d%%\n", i, data->soil_moisture_mapped[i]);
+  }
 
-  SensorData* data = (SensorData*)arg;
   data->humidity = humidity.relative_humidity;
   data->pressure = pressure;
   data->temperature = temperature.temperature;
-  data->soil_moisture_mapped = soil_moisture_mapped;
 }
 
 void onDataSent(const uint8_t *mac, esp_now_send_status_t status) {
@@ -132,7 +132,7 @@ void retrySend(void* arg) {
   Serial.printf("ESP-NOW Sending sensor data (retry %d)...\n", ctx->attempt);
   lastSendSuccess = false;
 
-  esp_err_t result = esp_now_send(ctx->peer_addr, (uint8_t*)ctx->data, sizeof(SensorData));
+  esp_err_t result = esp_now_send(ctx->peer_addr, (uint8_t*)ctx->data, sizeof(RawSensorData));
   if (result == ESP_OK) {
     Serial.println("\tesp_now_send() queued.");
   } else {
@@ -162,7 +162,7 @@ void sendSensorData(void* arg) {
 }
 
 void setup() {
-  SensorData* sensor_data = new SensorData();
+  RawSensorData* sensor_data = new RawSensorData();
   ResendContext* resend_ctx = new ResendContext();
 
   uint8_t hub_mac[] = HUB_MAC;
