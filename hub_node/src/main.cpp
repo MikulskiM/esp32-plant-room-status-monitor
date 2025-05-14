@@ -26,6 +26,8 @@ void setup() {
 
   // Start ESP-NOW after Wi-Fi is fully up and we know the channel, so it's more stable
   initEspNow(primaryChan);
+
+  // ring_buffer.addTestData();
 }
 
 void loop() {

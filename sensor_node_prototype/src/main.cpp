@@ -26,8 +26,6 @@
 #define MAX_SEND_RETRIES 5
 #define RETRY_DELAY_MS   250
 
-#define SOIL_MOISTURE_NOT_PRESENT -999
-
 Adafruit_AHTX0 aht_sensor;
 Adafruit_BMP280 bmp_sensor;
 
@@ -57,11 +55,14 @@ void readSensors(void* arg) {
     }
   }
 
-  Serial.printf("[AHT20+BMP280] Temp: %.2f°C | Hum: %.2f%% | Pressure: %.2f hPa | ",
+  Serial.printf("[AHT20+BMP280] Temp: %.2f°C | Hum: %.2f%% | Pressure: %.2f hPa\n",
     temperature.temperature, humidity.relative_humidity, pressure);
+  Serial.print("Soil moisture: ");
   for (int i = 0; i < MAX_SOIL_SENSORS; i++) {
-    Serial.printf("Soil moisture[%d]: %d%%\n", i, data->soil_moisture_mapped[i]);
+    Serial.printf("[%d]: %d%%", i, data->soil_moisture_mapped[i]);
+    if (i < MAX_SOIL_SENSORS - 1) Serial.print(" | ");
   }
+  Serial.println();
 
   data->humidity = humidity.relative_humidity;
   data->pressure = pressure;
@@ -156,7 +157,12 @@ void sendSensorData(void* arg) {
   Serial.printf("\tTemp:\t%.2f°C\n", ctx->data->temperature);
   Serial.printf("\tHum:\t%.2f%%\n", ctx->data->humidity);
   Serial.printf("\tPress:\t%.2f hPa\n", ctx->data->pressure);
-  Serial.printf("\tSoil:\t%d%%\n", ctx->data->soil_moisture_mapped);
+  Serial.print("\tSoil:\t");
+  for (int i = 0; i < MAX_SOIL_SENSORS; i++) {
+    Serial.printf("[%d]: %d%%", i, ctx->data->soil_moisture_mapped[i]);
+    if (i < MAX_SOIL_SENSORS - 1) Serial.print(" | ");
+  }
+  Serial.println();
 
   retrySend(ctx);  // initial attempt
 }

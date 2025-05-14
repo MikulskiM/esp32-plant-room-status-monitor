@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 
+#define SOIL_MOISTURE_NOT_PRESENT -999
 #define MAX_SOIL_SENSORS 5
 
 typedef struct {

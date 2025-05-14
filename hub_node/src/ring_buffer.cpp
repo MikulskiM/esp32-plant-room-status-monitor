@@ -23,7 +23,12 @@ void RingBuffer::addTestData() {
     sample.temperature = 20.0 + random(-50, 50) / 10.0; // 15.0 - 25.0 °C
     sample.humidity = 30.0 + random(-100, 100) / 10.0;  // 20.0 - 40.0 %
     sample.pressure = 984.0 + random(-50, 50) / 10.0;   // 979.0 - 989.0 hPa
-    sample.soil_moisture_mapped = 90 + random(0, 11);   // 90 - 100 %
+    for (int i = 0; i < 5; i++) {
+        sample.soil_moisture_mapped[i] = 75 + random(-15, 21);   // 60 - 95 %
+        if (i == 3) {
+            sample.soil_moisture_mapped[i] = -999;
+        }
+    }
     sample.timestamp = now - (50 - i) * 60;             // every 1 minute back
 
     addData(sample);

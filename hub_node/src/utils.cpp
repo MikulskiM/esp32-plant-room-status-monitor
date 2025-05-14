@@ -47,5 +47,10 @@ void printSensorData(SensorData& data) {
     Serial.printf("  temp: %.2f °C\n", data.temperature);
     Serial.printf("  hum : %.2f %%\n", data.humidity);
     Serial.printf("  pres: %.2f hPa\n", data.pressure);
-    Serial.printf("  soil: %d %%\n", data.soil_moisture_mapped);
+    Serial.print("  soil: ");
+    for (int i = 0; i < MAX_SOIL_SENSORS; i++) {
+      Serial.printf("[%d]: %d%%", i, data.soil_moisture_mapped[i]);
+      if (i < MAX_SOIL_SENSORS - 1) Serial.print(" | ");
+    }
+    Serial.print(" %%\n");
 }
