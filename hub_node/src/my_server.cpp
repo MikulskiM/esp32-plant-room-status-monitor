@@ -27,17 +27,16 @@ void setupWebServer() {
 
 void handleRoot() {
   String labels = "[";
-  String tempLines;
-  String humLines;
-  String pressLines;
-  String soilCharts;
+  String tempLines, humLines, pressLines, soilCharts;
 
-  // Assume all ring buffers are the same size
   int nodeCount = node_registry.getNodeCount();
   for (int i = 0; i < nodeCount; i++) {
     NodeEntry* node = node_registry.getNodeByIndex(i);
     SensorData dataList[BUFFER_SIZE];
     int count = node->ring_buffer.getAll(dataList);
+    std::sort(dataList, dataList + count, [](const SensorData& a, const SensorData& b) {
+      return a.timestamp < b.timestamp;
+    });
 
     String tempData = "[";
     String humData = "[";

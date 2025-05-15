@@ -27,7 +27,10 @@ void setup() {
   // Start ESP-NOW after Wi-Fi is fully up and we know the channel, so it's more stable
   initEspNow(primaryChan);
 
-  // ring_buffer.addTestData();
+  // TEST NODE + TEST DATA
+  uint8_t fake_mac[6] = {0xAA, 0xBB, 0xCC, 0x00, 0x00, 0x01};
+  node_registry.registerNode(fake_mac);
+  node_registry.addTestDataForAllNodes();
 }
 
 void loop() {
