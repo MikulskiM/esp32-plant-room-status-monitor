@@ -2,7 +2,6 @@
 #define RING_BUFFER_H
 
 #include "types.h"
-#include "utils.h"
 
 #define BUFFER_SIZE 100
 

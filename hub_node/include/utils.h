@@ -8,5 +8,6 @@ void initTime();
 String formatTimeStamp(time_t timestamp);
 String getCurrentTimestamp();
 void printSensorData(SensorData& data);
+String macToStr(const uint8_t* mac);
 
 #endif

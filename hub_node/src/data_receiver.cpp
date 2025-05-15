@@ -3,6 +3,7 @@
 SensorData latest_sensor_data;
 bool has_sensor_data = false;
 RingBuffer ring_buffer;
+NodeRegistry node_registry;
 
 void initEspNow(uint8_t channel) {
   esp_wifi_set_promiscuous(true);
@@ -57,6 +58,9 @@ void onDataReceive(const uint8_t* mac, const uint8_t* incoming_data, int len) {
 
   Serial.printf("ESP-NOW Data received from %02X:%02X:%02X:%02X:%02X:%02X:\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   printSensorData(data);
+
+  NodeEntry* node = node_registry.registerNode(mac);
+  node_registry.addSensorData(mac, data);
 
   ring_buffer.addData(data);
 }

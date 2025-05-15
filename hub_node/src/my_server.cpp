@@ -1,6 +1,7 @@
 #include "my_server.h"
 
 WebServer server(80);  // HTTP server on port 80
+extern NodeRegistry node_registry;
 
 void setupWebServer() {
   // Wi-Fi setup
@@ -25,97 +26,81 @@ void setupWebServer() {
 }
 
 void handleRoot() {
-  SensorData dataList[BUFFER_SIZE];
-  int count = ring_buffer.getAll(dataList);
-
   String labels = "[";
-  String tempData = "[";
-  String humData = "[";
-  String pressData = "[";
+  String tempLines;
+  String humLines;
+  String pressLines;
+  String soilCharts;
 
-  String soilData[MAX_SOIL_SENSORS] = {"[", "[", "[", "[", "["};
-  bool soilPresent[MAX_SOIL_SENSORS] = {false};
+  // Assume all ring buffers are the same size
+  int nodeCount = node_registry.getNodeCount();
+  for (int i = 0; i < nodeCount; i++) {
+    NodeEntry* node = node_registry.getNodeByIndex(i);
+    SensorData dataList[BUFFER_SIZE];
+    int count = node->ring_buffer.getAll(dataList);
 
-  for (int i = 0; i < count; i++) {
-    String label = "\"" + formatTimeStamp(dataList[i].timestamp) + "\"";
-    labels += label + (i < count - 1 ? "," : "");
-    tempData += String(dataList[i].temperature, 2) + (i < count - 1 ? "," : "");
-    humData += String(dataList[i].humidity, 2) + (i < count - 1 ? "," : "");
-    pressData += String(dataList[i].pressure, 2) + (i < count - 1 ? "," : "");
+    String tempData = "[";
+    String humData = "[";
+    String pressData = "[";
+    String soilLines[MAX_SOIL_SENSORS] = {"[", "[", "[", "[", "["};
 
-    for (int j = 0; j < MAX_SOIL_SENSORS; j++) {
-      int val = dataList[i].soil_moisture_mapped[j];
-      if (val != SOIL_MOISTURE_NOT_PRESENT) {
-        soilPresent[j] = true;
-        soilData[j] += String(val);
-      } else {
-        soilData[j] += "null";
+    for (int j = 0; j < count; j++) {
+      if (i == 0) {
+        String label = "\"" + formatTimeStamp(dataList[j].timestamp) + "\"";
+        labels += label + (j < count - 1 ? "," : "");
       }
-      soilData[j] += (i < count - 1 ? "," : "");
-    }
-  }
 
+      tempData += String(dataList[j].temperature, 2) + (j < count - 1 ? "," : "");
+      humData += String(dataList[j].humidity, 2) + (j < count - 1 ? "," : "");
+      pressData += String(dataList[j].pressure, 2) + (j < count - 1 ? "," : "");
+
+      for (int k = 0; k < MAX_SOIL_SENSORS; k++) {
+        int val = dataList[j].soil_moisture_mapped[k];
+        soilLines[k] += (val != SOIL_MOISTURE_NOT_PRESENT) ? String(val) : "null";
+        if (j < count - 1) soilLines[k] += ",";
+      }
+    }
+
+    tempData += "]";
+    humData += "]";
+    pressData += "]";
+    for (int k = 0; k < MAX_SOIL_SENSORS; k++) soilLines[k] += "]";
+
+    tempLines += "{label: '" + node->name + "', data: " + tempData + ", borderColor: getColor(" + String(i) + "), fill: false},";
+    humLines += "{label: '" + node->name + "', data: " + humData + ", borderColor: getColor(" + String(i) + "), fill: false},";
+    pressLines += "{label: '" + node->name + "', data: " + pressData + ", borderColor: getColor(" + String(i) + "), fill: false},";
+
+    // Soil chart per node
+    soilCharts += "<canvas id='soilChart" + String(i) + "'></canvas>";
+    soilCharts += "<script>\nconst soilDatasets" + String(i) + " = [";
+    for (int k = 0; k < MAX_SOIL_SENSORS; k++) {
+      if (soilLines[k].indexOf("null") != soilLines[k].length() - 1 || soilLines[k].indexOf("null") == -1) {
+        soilCharts += "{label: '" + node->name + " – Soil " + String(k+1) + "', data: " + soilLines[k] + ", borderColor: getColor(" + String(k) + "), fill: false},";
+      }
+    }
+    soilCharts += "];\ncreateChart('soilChart" + String(i) + "', soilDatasets" + String(i) + ");\n</script>";
+  }
   labels += "]";
-  tempData += "]";
-  humData += "]";
-  pressData += "]";
-  for (int j = 0; j < MAX_SOIL_SENSORS; j++) soilData[j] += "]";
 
   String html = "<html><head><meta charset='UTF-8'><title>Plant Status</title>";
   html += "<script src='https://cdn.jsdelivr.net/npm/chart.js'></script></head><body>";
   html += "<h1>Sensor Data Charts</h1>";
-
   html += "<canvas id='tempChart'></canvas>";
   html += "<canvas id='humChart'></canvas>";
   html += "<canvas id='pressChart'></canvas>";
-  html += "<canvas id='soilChartCombined'></canvas>";  // wspólny wykres dla soil sensorów
+  html += soilCharts;
 
-  html += "<script>";
-  html += "const labels = " + labels + ";";
-  html += "const tempData = {label: 'Temperature (°C)', data: " + tempData + ", borderColor: 'red', fill: false};";
-  html += "const humData = {label: 'Humidity (%)', data: " + humData + ", borderColor: 'blue', fill: false};";
-  html += "const pressData = {label: 'Pressure (hPa)', data: " + pressData + ", borderColor: 'orange', fill: false};";
-
-  html += "const soilDatasets = [];";
-  const char* colors[] = {"'green'", "'blue'", "'red'", "'orange'", "'purple'"};
-
-  for (int j = 0; j < MAX_SOIL_SENSORS; j++) {
-    if (soilPresent[j]) {
-      html += "soilDatasets.push({label: 'Soil Sensor " + String(j+1) +
-              "', data: " + soilData[j] +
-              ", borderColor: " + colors[j % 5] +
-              ", fill: false});";
-    }
-  }
-
-  html += R"rawliteral(
-    function createChart(ctxId, datasets) {
-      new Chart(document.getElementById(ctxId), {
-        type: 'line',
-        data: {
-          labels: labels,
-          datasets: datasets
-        },
-        options: {
-          responsive: true,
-          scales: {
-            x: { display: true, title: { display: true, text: 'Time' }},
-            y: { display: true, beginAtZero: true }
-          }
-        }
-      });
-    }
-
-    createChart('tempChart', [tempData]);
-    createChart('humChart', [humData]);
-    createChart('pressChart', [pressData]);
-    createChart('soilChartCombined', soilDatasets);
-  </script></body></html>)rawliteral";
+  html += "<script>\n";
+  html += "function getColor(index) { const colors = ['red','blue','green','orange','purple','brown','black','pink','gray','teal']; return colors[index % colors.length]; }\n";
+  html += "function createChart(id, datasets) {\nnew Chart(document.getElementById(id), { type: 'line', data: { labels: " + labels + ", datasets: datasets }, options: { responsive: true, scales: { x: { display: true, title: { display: true, text: 'Time' } }, y: { beginAtZero: true } } } }); }\n";
+  html += "createChart('tempChart', [" + tempLines + "]);\n";
+  html += "createChart('humChart', [" + humLines + "]);\n";
+  html += "createChart('pressChart', [" + pressLines + "]);\n";
+  html += "</script></body></html>";
 
   server.send(200, "text/html", html);
   Serial.println("Sent HTML response to client");
 }
-
 
 void handleWebServer() {
   server.handleClient();
