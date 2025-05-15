@@ -1,4 +1,5 @@
 #include "ring_buffer.h"
+#include <algorithm>
 
 RingBuffer::RingBuffer() : head(0), count(0) {}
 
@@ -29,26 +30,28 @@ int RingBuffer::getSize() {
 }
 
 int RingBuffer::getAll(SensorData* outArray) {
-    Serial.print("Getting all data from the ring buffer: ");
-    if (count < BUFFER_SIZE) {
-        // no wrapping
-        for (int i = 0; i < count; i++) {
-            outArray[i] = buffer[i];
-        }
-    }
-    else {
-        int out_counter = 0;
-        // start copying from head
-        for (int i = head; i < BUFFER_SIZE; i++) {
-            outArray[out_counter] = buffer[i];
-            out_counter++;
-        }
+  Serial.print("Getting all data from the ring buffer: ");
+  int actualCount = count;
 
-        for (int i = 0; i < head; i++) {
-            outArray[out_counter] = buffer[i];
-            out_counter++;
-        }
+  if (count < BUFFER_SIZE) {
+    for (int i = 0; i < count; i++) {
+      outArray[i] = buffer[i];
     }
-    Serial.println("Successful");
-    return count;
+  } else {
+    int out_counter = 0;
+    for (int i = head; i < BUFFER_SIZE; i++) {
+      outArray[out_counter++] = buffer[i];
+    }
+    for (int i = 0; i < head; i++) {
+      outArray[out_counter++] = buffer[i];
+    }
+  }
+
+  // Sort chronologicaly - timestamp
+  std::sort(outArray, outArray + actualCount, [](const SensorData& a, const SensorData& b) {
+    return a.timestamp < b.timestamp;
+  });
+
+  Serial.println("Successful");
+  return actualCount;
 }

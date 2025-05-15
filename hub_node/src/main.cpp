@@ -7,6 +7,7 @@
 #include "utils.h"
 #include "data_receiver.h"
 #include "my_server.h"
+#include "config.h"
 
 #define SERIAL_BAUD_RATE  115200
 
@@ -27,10 +28,11 @@ void setup() {
   // Start ESP-NOW after Wi-Fi is fully up and we know the channel, so it's more stable
   initEspNow(primaryChan);
 
-  // TEST NODE + TEST DATA
+  #if TEST_MODE
   uint8_t fake_mac[6] = {0xAA, 0xBB, 0xCC, 0x00, 0x00, 0x01};
   node_registry.registerNode(fake_mac);
   node_registry.addTestDataForAllNodes();
+  #endif
 }
 
 void loop() {
