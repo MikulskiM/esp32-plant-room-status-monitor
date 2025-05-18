@@ -54,3 +54,11 @@ ESP-NOW and Wi-Fi both use the same radio, but they must operate on the **same c
 2. **Split the ESP-NOW receiver and the HTTP server into two devices**  
    The hub node would focus solely on receiving ESP-NOW data. Then, via **UART or wired serial**, it would forward the data to a second ESP32 (or other device) responsible for hosting the HTTP server.  
    This would eliminate the channel conflict entirely, but I decided not to use more than 1 ESP32 for that purpose.
+
+3. **Using FreeRTOS tasks or mutexes to "share" the radio**  
+   This won’t work — the problem is hardware-based. ESP-NOW and Wi-Fi both rely on the same radio and must use the same channel.  
+   Even with perfect multitasking or synchronization (e.g. FreeRTOS tasks, semaphores), you can't stop the Wi-Fi stack from switching channels when connecting to a router.  
+
+   Also, precise control over the radio module (e.g. alternating Wi-Fi/ESP-NOW usage, or pausing/resuming the PHY layer) is not exposed in the ESP-IDF or Arduino API.  
+   That level of control would require modifying the closed-source radio firmware provided by Espressif, which is not accessible from user code.  
+   Therefore, task scheduling tricks and OS-level coordination cannot resolve this limitation.
